@@ -1,196 +1,110 @@
-# CNN 기반 RC카 자율주행
+# CNN RC카 자율주행
 
-ESP32-CAM의 영상을 PC에서 받아 `left`, `straight`, `right` 세 방향으로
-분류하고, Raspberry Pi Pico에 조향 명령을 보내는 교육용 자율주행
-프로젝트입니다. 수동 주행 데이터 수집, CNN 학습, 모의 예측, 실제 차량
-주행까지 한 폴더에서 실행할 수 있습니다.
+ESP32-CAM 영상과 Raspberry Pi Pico를 이용한 교육용 RC카 프로젝트입니다. PC에서 방향키로 차량을 조종하며 영상을 수집하고, `left`·`straight`·`right` 3개 클래스로 CNN을 학습한 뒤 실시간 영상으로 조향합니다. 전진, 조향, 브레이크, 방향지시등은 각각 별도의 명령으로 제어합니다.
 
-> 실제 차량을 시험할 때는 먼저 바퀴를 지면에서 띄우고 동작을 확인하세요.
-> 카메라나 PC 통신이 끊겨도 차량이 멈추는 감시 기능이 있지만, 주변 안전을
-> 확보하고 즉시 전원을 차단할 수 있는 상태에서 시험해야 합니다.
+> 현재는 새 카메라로 데이터를 다시 수집하는 단계입니다. 이전 카메라로 만든 데이터와 `trained_model/`의 모델은 실제 주행 성능을 검증한 결과가 아닙니다.
 
-## 주요 기능
+## 구성
 
-- PyQt5 조이스틱 UI를 이용한 RC카 수동 조종
-- 주행 중 `left`, `straight`, `right` 이미지 자동 분류 및 저장
-- 밝기·대비 증강과 클래스 가중치를 적용한 CNN 학습
-- 카메라 영상 위에 방향별 예측 확률 표시
-- 낮은 예측 신뢰도와 추론 지연 시 자동 정지
-- PC 제어 신호가 1초 이상 끊기면 Pico에서 비상 정지
-
-## 동작 구조
-
-```text
-ESP32-CAM ──MJPEG──> PC
-                       ├─ 01.drive.py       데이터 수집
-                       ├─ 02.train_cnn.py   CNN 학습
-                       └─ 03.ai_drive.py    실시간 추론
-                                │
-                                └─UART/Serial──> Raspberry Pi Pico ──> 모터·조향
-```
-
-## 파일 구성
-
-| 파일 | 설명 |
+| 파일 | 역할 |
 | --- | --- |
-| `01.drive.py` | 수동 조종 및 학습 데이터 수집 |
-| `02.train_cnn.py` | 데이터 분할, CNN 학습, 평가 결과 저장 |
-| `03.ai_drive.py` | 실시간 영상 추론 및 자율주행 |
-| `04.serial_steering_test.py` | 카메라 없이 시리얼 조향 시험 |
-| `ai_common.py` | 클래스, 영상 크기, 카메라 방향 공통 설정 |
-| `myjoystickcamapp.py` | 카메라·조이스틱·수집 GUI |
-| `main.py` | Pico용 차량 제어 및 통신 감시 코드 |
-| `_Config.py` | Pico 핀 번호와 하드웨어 설정 |
-| `05.genai_object.py` | 수업용 사진 인식 연출 예제(자율주행과 독립) |
-| `00.CNN_자율주행_사용법.md` | 간단한 자율주행 실행 안내 |
+| `01.drive.py` | 수동 조종과 데이터 수집 |
+| `myjoystickcamapp.py` | 카메라 화면·키 입력·이미지 저장 UI |
+| `02.train_cnn.py` | 3분류 CNN 학습과 평가 |
+| `03.ai_drive.py` | MJPEG 영상 수신, 예측, Pico 조향 명령 |
+| `04.serial_steering_test.py` | 모터를 정지한 채 좌·중앙·우 조향 검사 |
+| `ai_common.py` | 클래스 순서와 추론용 카메라 변환 설정 |
+| `main.py`, `_*.py` | Pico의 모터·서보·센서·조명 제어 |
 
-`camera.py`, `myjoystick*.py`, `test.py`는 카메라와 조이스틱 UI를 단계별로
-실습한 예제입니다.
+흐름: `ESP32-CAM → PC의 수집/추론 프로그램 → 시리얼 → Pico → 모터·서보·네오픽셀`
 
-## 준비물
+`05.genai_object.py`와 그 사용법 문서는 자율주행과 별개인 수업 예제입니다.
 
-- Python 3.10 또는 3.11 권장
-- Raspberry Pi Pico와 MicroPython
-- ESP32-CAM MJPEG 스트림
-- USB 또는 Bluetooth 시리얼 연결
-- 프로젝트 하드웨어에 맞는 모터, 조향 서보, 센서
+## 준비
 
-### Pico 의존 파일
+- PC: Python, ESP32-CAM 스트림에 연결할 수 있는 네트워크, Pico 시리얼 연결
+- 차량: Raspberry Pi Pico, ESP32-CAM, 모터, 조향 서보, 네오픽셀 및 프로젝트의 센서
+- Pico 파일: `main.py`, `_Config.py`, `_Drive.py`, `_ServoMotor.py`, `_Battery.py`, `_DistanceSensor.py`, `_Oled.py`, `_VehicleLights.py` 등 실제 차량에서 사용하는 모듈
 
-현재 폴더의 `main.py`는 다음 Pico용 모듈도 사용합니다.
+현재 이 저장소에는 `_Oled.py`와 `_VehicleLights.py`가 없습니다. Pico에 이미 업로드된 동일 버전의 파일이 있어야 `main.py`가 실행됩니다. 해당 파일 없이 새 Pico를 설정할 수는 없습니다.
 
-- `_Oled.py`
-- `_VehicleLights.py`
-
-`_ServoMotor.py`는 포함되어 있지만 위 두 파일은 현재 프로젝트 폴더에 없습니다.
-실제 Pico에서 사용 중인 동일한 버전의 모듈과 OLED 드라이버가 있다면 Pico에
-함께 업로드해야 합니다. PC에서 데이터 수집·학습·모의 예측만 할 때는 필요하지
-않습니다.
-
-## PC 설치
-
-가상환경을 만든 뒤 의존성을 설치합니다.
+PowerShell에서 프로젝트 폴더로 이동한 뒤 PC 패키지를 설치합니다.
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
+.\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 ```
 
-TensorFlow 설치가 지원되는 Python 버전인지 먼저 확인하세요. 시리얼 포트와
-카메라 주소의 기본값은 각각 `COM6`, `http://192.168.4.1:81/stream`입니다.
+기본 카메라 주소는 `http://192.168.4.1:81/stream`, 기본 시리얼 포트는 `COM6`입니다. 실제 연결에 맞게 실행 옵션을 바꿔주세요. 수동 조종 프로그램과 자율주행 프로그램을 동시에 실행하면 같은 시리얼 포트를 사용할 수 없습니다.
 
-## 1. 데이터 수집
+## 1. 카메라 확인과 데이터 수집
 
-Pico에서 `main.py`를 실행하고 다음 명령으로 조종 화면을 엽니다.
-
-```powershell
-python 01.drive.py
-```
-
-장치 설정이 다르면 실행 옵션으로 지정할 수 있습니다.
+새 카메라를 장착한 뒤 먼저 수동 조종 화면에서 차선이 올바른 방향으로 보이는지 확인합니다.
 
 ```powershell
-python 01.drive.py --port COM7 --camera http://192.168.4.1:81/stream
+python 01.drive.py --port COM6 --camera http://192.168.4.1:81/stream
 ```
 
-수집 결과는 기본적으로 아래 구조로 저장됩니다.
+| 키 | 수동 조종 |
+| --- | --- |
+| `↑` / `↓` | 전진 / 후진 |
+| `←` / `→` | 핸들 왼쪽 / 오른쪽 |
+| `Space` | 브레이크 |
+| `Q` / `E` | 왼쪽 / 오른쪽 방향지시등 |
+| `H` / `0` | 비상등 / 방향지시등 끄기 |
+| `F5` | 데이터 수집 시작 / 종료 |
 
-```text
-dataset/
-└─ session_YYYYMMDD_HHMMSS_mmm/
-   ├─ left/
-   ├─ straight/
-   ├─ right/
-   └─ labels.csv
-```
+수집 영상은 전진 중이고 브레이크를 밟지 않았을 때 `dataset/session_.../{left,straight,right}/`에 저장됩니다. 현재 수집 프로그램은 저장 전에 이미지를 `160×120`으로 줄입니다. 첫 수집에서는 수십 장만 저장한 뒤 JPG를 직접 열어 방향, 선명도, 라벨을 확인하세요. 새 카메라 데이터는 이전 카메라의 데이터와 섞지 않는 편이 좋습니다.
 
-연속된 비슷한 프레임 수보다 조건의 다양성이 중요합니다. 서로 다른 조명,
-곡률, 차량 위치에서 여러 세션으로 나누어 수집하고 세 클래스가 지나치게
-불균형하지 않도록 맞추는 것을 권장합니다.
+가능하면 시계·반시계 방향으로 여러 세션을 수집하고, 직진뿐 아니라 좌우 회전과 차선에서 벗어났다가 복구하는 장면도 포함하세요. 클래스별 장수가 비슷하도록 수집 화면의 개수를 확인합니다.
 
 ## 2. CNN 학습
 
 ```powershell
-python 02.train_cnn.py
+python 02.train_cnn.py --dataset dataset --output trained_model
 ```
 
-주요 옵션은 다음과 같습니다.
+학습이 끝나면 `trained_model/model.keras`, `model_metadata.json`, `test_metrics.json`, 혼동행렬과 학습 그래프가 생성됩니다. 전체 정확도 외에 좌·직진·우 각각의 재현율을 확인하세요. 연속 촬영 프레임을 무작위로 분할한 시험 점수는 실제 코스 주행 성능보다 높게 나올 수 있습니다. 새 주행 세션으로 별도 시험하는 것이 좋습니다.
+
+## 3. 조향과 예측 확인
+
+바퀴를 지면에서 띄우고 Pico의 서보가 좌·중앙·우로 움직이는지 확인합니다.
 
 ```powershell
-python 02.train_cnn.py --dataset dataset --epochs 40 --batch-size 32
+python 04.serial_steering_test.py --port COM6
 ```
 
-학습 산출물은 `trained_model/`에 생성됩니다.
-
-- `model.keras`: 최종 모델
-- `best_model.keras`: 검증 성능이 가장 좋았던 모델
-- `model_metadata.json`: 클래스와 영상 전처리 설정
-- `test_metrics.json`: 시험 정확도와 클래스별 지표
-- `confusion_matrix.*`: 혼동행렬
-- `training_history.*`: 학습 곡선
-
-이 폴더와 `dataset/`은 생성 데이터이므로 Git에는 포함되지 않습니다.
-
-## 3. 차량을 움직이지 않고 예측 확인
+차량 명령 없이 카메라 예측만 보려면 다음 명령을 사용합니다.
 
 ```powershell
 python 03.ai_drive.py --no-serial
 ```
 
-화면에서 `LEFT`, `STRAIGHT`, `RIGHT` 확률이 카메라 위치에 따라 자연스럽게
-바뀌는지 확인합니다. 이 모드에서는 차량 명령을 보내지 않습니다.
+화면에서 예측 방향이 카메라 위치에 맞게 바뀌는지 확인합니다. `03.ai_drive.py`의 기본 모델 경로는 `trained_model/model.keras`입니다.
 
-## 4. 실제 자율주행
+## 4. 자율주행
 
-Pico의 `main.py`를 먼저 실행한 뒤 PC에서 다음 명령을 실행합니다.
+수집 프로그램을 종료하고 Pico에서 `main.py`를 실행한 다음 PC에서 시작합니다.
 
 ```powershell
-python 03.ai_drive.py --port COM6
+python 03.ai_drive.py --port COM6 --debug-serial
 ```
 
-| 키 | 기능 |
+| 키 | 자율주행 화면 |
 | --- | --- |
 | `A` | 자율주행 시작 |
 | `Space` | 브레이크 및 일시정지 |
 | `Q` / `E` | 왼쪽 / 오른쪽 방향지시등 |
-| `H` | 비상등 |
-| `0` | 방향지시등 끄기 |
+| `H` / `0` | 비상등 / 방향지시등 끄기 |
 | `Esc` | 비상정지 후 종료 |
 
-기본 예측 신뢰도 기준은 `0.52`이며 필요하면 변경할 수 있습니다.
+CNN은 조향만 `left → <`, `straight → |`, `right → >`로 결정합니다. 전진 `F`, 정지 `S`, 브레이크 `B/b`는 별도로 전송합니다. 예측 확률이 기본 기준 `0.52`보다 낮거나 추론이 오래 멈추면 PC가 차량을 정지시킵니다. Pico의 통신 감시 기능도 자율주행 중 제어 신호가 끊기면 정지하도록 설계돼 있습니다. 첫 실제 시험은 바퀴를 띄운 상태에서 하세요.
 
-```powershell
-python 03.ai_drive.py --confidence 0.60 --debug-serial
-```
+## 카메라 방향 주의
 
-## 현재 모델 참고 결과
+현재 `myjoystickcamapp.py`의 수집 경로는 카메라 원본 프레임을 그대로 저장합니다. 반면 `ai_common.py`에는 추론 기본값으로 180도 회전과 좌우 반전이 설정돼 있습니다. 새 카메라로 재수집할 때 두 화면의 방향이 같아야 하며, 방향이 다르면 `ai_common.py`의 `CAMERA_ROTATION_DEGREES`와 `CAMERA_MIRROR_HORIZONTAL`을 수집 영상에 맞게 조정하고 다시 학습해야 합니다. 방향 설정을 바꾼 뒤에는 `--no-serial`로 확인하세요.
 
-기존 모델은 총 3,764장(`left` 1,236장, `straight` 2,271장,
-`right` 257장)으로 학습했으며 기록된 시험 정확도는 약 **88.9%**입니다.
-다만 연속 프레임을 무작위로 나눈 결과이고 우회전 표본도 적으므로, 실제 코스
-성능을 그대로 의미하지 않습니다. 별도 주행 세션을 학습에서 제외해 최종
-검증하는 것을 권장합니다.
+## Git에 포함되지 않는 파일
 
-## 설정 변경
-
-카메라가 거꾸로 보이거나 좌우가 반대라면 `ai_common.py`의 다음 값을
-수집과 추론에서 동일하게 사용해야 합니다.
-
-```python
-CAMERA_ROTATION_DEGREES = 180
-CAMERA_MIRROR_HORIZONTAL = True
-```
-
-조향 각도와 Pico 핀 번호는 `_Drive.py`, `_Config.py`에서 차량에 맞게
-조정합니다.
-
-## 저장소에 포함하지 않는 항목
-
-- `dataset/`: 촬영 이미지와 라벨
-- `trained_model/`: 학습 모델과 평가 산출물
-- `api/key.env`, `.env*`: API 키 등 민감정보
-- `.venv/`, `__pycache__/`: 로컬 Python 환경과 캐시
-
-API 키나 개인 경로가 포함된 파일은 커밋하지 마세요.
+`.gitignore`는 `dataset/`, `trained_model/`, `.venv/`, 캐시, `.env*`, `api/key.env`를 제외합니다. 따라서 저장소를 새로 내려받은 사람은 직접 데이터를 수집하고 학습해 모델을 만들어야 합니다. API 키나 개인 설정 파일은 커밋하지 마세요.
