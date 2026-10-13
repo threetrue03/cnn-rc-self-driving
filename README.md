@@ -104,7 +104,3 @@ CNN은 조향만 `left → <`, `straight → |`, `right → >`로 결정합니�
 ## 카메라 방향 주의
 
 현재 `myjoystickcamapp.py`의 수집 경로는 카메라 원본 프레임을 그대로 저장합니다. 반면 `ai_common.py`에는 추론 기본값으로 180도 회전과 좌우 반전이 설정돼 있습니다. 새 카메라로 재수집할 때 두 화면의 방향이 같아야 하며, 방향이 다르면 `ai_common.py`의 `CAMERA_ROTATION_DEGREES`와 `CAMERA_MIRROR_HORIZONTAL`을 수집 영상에 맞게 조정하고 다시 학습해야 합니다. 방향 설정을 바꾼 뒤에는 `--no-serial`로 확인하세요.
-
-## Git에 포함되지 않는 파일
-
-`.gitignore`는 `dataset/`, `trained_model/`, `.venv/`, 캐시, `.env*`, `api/key.env`를 제외합니다. 따라서 저장소를 새로 내려받은 사람은 직접 데이터를 수집하고 학습해 모델을 만들어야 합니다. API 키나 개인 설정 파일은 커밋하지 마세요.
